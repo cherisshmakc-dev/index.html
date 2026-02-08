@@ -227,7 +227,10 @@ function update() {
     ctx.fillText("Dino survived the gym!", 50, 150);
 
     if (score >= 5) {
-      ctx.fillText("🦖 asks: Be my Valentine, Geckool?", 50, 190);
+  ctx.font = "18px Arial";
+  ctx.fillText("🦖 asks:", 20, 185);
+  ctx.fillText("Be my Valentine, Geckool?", 20, 210);
+
 
       if (!document.getElementById("yesBtn")) {
         // YES button
@@ -277,3 +280,4 @@ update();
 </script>
 </body>
 </html>
+
