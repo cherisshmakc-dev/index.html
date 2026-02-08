@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<title>Gym Dino Valentine Game</title>
+<style>
+  body {
+    margin: 0;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+    background: #222;
+    color: #eee;
+  }
+  canvas {
+    display: block;
+    margin: auto;
+    background: #444;
+    touch-action: manipulation;
+    width: 100vw;
+    height: 400px;
+  }
+  #top {
+    text-align: center;
+    padding: 5px;
+    font-size: 14px;
+    background: #111;
+    border-bottom: 1px solid #444;
+  }
+  button {
+    padding: 15px 25px;
+    margin: 10px;
+    font-size: 20px;
+    cursor: pointer;
+    position: fixed;
+    bottom: 50px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+  }
+  #noBtn {
+    bottom: 10px;
+  }
+</style>
+</head>
+<body>
+<div id="top">Tap or swipe to jump over desserts and collect gym gear!</div>
+<canvas id="game"></canvas>
+
+<!-- Sounds -->
+<audio id="jumpSound" src="https://assets.mixkit.co/sfx/preview/mixkit-arcade-game-jump-coin-216.wav"></audio>
+<audio id="hitSound" src="https://assets.mixkit.co/sfx/preview/mixkit-arcade-bonus-alert-767.wav"></audio>
+<audio id="collectSound" src="https://assets.mixkit.co/sfx/preview/mixkit-coin-drop-1964.wav"></audio>
+<audio id="celebrateSound" src="https://assets.mixkit.co/sfx/preview/mixkit-arcade-achievement-214.wav"></audio>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = 400;
+}
+resize();
+window.addEventListener("resize", resize);
+
+const jumpSound = document.getElementById("jumpSound");
+const hitSound = document.getElementById("hitSound");
+const collectSound = document.getElementById("collectSound");
+const celebrateSound = document.getElementById("celebrateSound");
+
+let dino = { x: 50, y: 300, vy: 0, width: 40, height: 40, onGround: true, stretch: 0 };
+let obstacles = [];
+let collectibles = [];
+let score = 0;
+let gameOver = false;
+let showEnd = false;
+let particles = [];
+let responseMessage = "";
+let celebrationActive = false;
+
+// Obstacles and collectibles
+const obstacleTypes = ["🍩", "🍪", "🍰", "🍫"];
+const collectibleTypes = ["🏋️‍♂️", "🥤", "🥛", "🏋️‍♀️"];
+
+// Jump
+function jump() {
+  if (dino.onGround && !gameOver) {
+    dino.vy = -14;
+    dino.onGround = false;
+    jumpSound.currentTime = 0;
+    jumpSound.play();
+  }
+}
+window.addEventListener("keydown", jump);
+canvas.addEventListener("touchstart", jump);
+
+// Spawn obstacles
+setInterval(() => {
+  if (gameOver) return;
+  const type = obstacleTypes[Math.floor(Math.random() * obstacleTypes.length)];
+  const wobble = Math.random() * 2 + 1;
+  obstacles.push({ x: canvas.width, y: 300, emoji: type, wobble, wobblePhase: Math.random() * Math.PI });
+}, 1600);
+
+// Spawn collectibles
+setInterval(() => {
+  if (gameOver) return;
+  const type = collectibleTypes[Math.floor(Math.random() * collectibleTypes.length)];
+  const wobble = Math.random() * 2 + 1;
+  collectibles.push({ x: canvas.width, y: 260, emoji: type, wobble, wobblePhase: Math.random() * Math.PI, collected: false });
+}, 2500);
+
+// Particles for celebration
+function spawnParticles(x, y) {
+  for (let i = 0; i < 20; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 6,
+      vy: (Math.random() - 1.5) * 6,
+      alpha: 1,
+      emoji: Math.random() < 0.5 ? "💪" : "🎉"
+    });
+  }
+}
+
+function update() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Ground
+  ctx.fillStyle = "#777";
+  ctx.fillRect(0, 350, canvas.width, 50);
+
+  // Dino physics
+  dino.vy += 0.8;
+  dino.y += dino.vy;
+  dino.stretch = Math.min(10, Math.max(0, -dino.vy));
+  if (dino.y >= 300) {
+    dino.y = 300;
+    dino.vy = 0;
+    dino.onGround = true;
+    dino.stretch = 0;
+  }
+
+  // Draw Dino
+  ctx.save();
+  ctx.translate(dino.x + 40, dino.y + 40);
+  ctx.scale(-1, 1);
+  ctx.scale(1, 1 + dino.stretch / 20);
+  ctx.font = "40px serif";
+  ctx.textBaseline = "bottom";
+  ctx.fillText("🦖", 0, 0);
+  ctx.restore();
+
+  // Obstacles
+  for (let i = obstacles.length - 1; i >= 0; i--) {
+    let obs = obstacles[i];
+    obs.x -= 6;
+    obs.y = 300 + Math.sin(obs.wobblePhase) * obs.wobble;
+    obs.wobblePhase += 0.1;
+    ctx.font = "40px serif";
+    ctx.fillText(obs.emoji, obs.x, obs.y + 40);
+
+    if (!gameOver &&
+        dino.x + dino.width > obs.x &&
+        dino.x < obs.x + 40 &&
+        dino.y + dino.height > obs.y &&
+        dino.y < obs.y + 40) {
+      hitSound.currentTime = 0;
+      hitSound.play();
+      gameOver = true;
+      setTimeout(() => showEnd = true, 500);
+    }
+    if (obs.x + 40 < 0) obstacles.splice(i, 1);
+  }
+
+  // Collectibles
+  for (let i = collectibles.length - 1; i >= 0; i--) {
+    let c = collectibles[i];
+    c.x -= 6;
+    c.y = 260 + Math.sin(c.wobblePhase) * c.wobble;
+    c.wobblePhase += 0.1;
+    ctx.font = "40px serif";
+    ctx.fillText(c.emoji, c.x, c.y + 40);
+
+    if (!gameOver && !c.collected &&
+        dino.x + dino.width > c.x &&
+        dino.x < c.x + 40 &&
+        dino.y + dino.height > c.y &&
+        dino.y < c.y + 40) {
+      c.collected = true;
+      score++;
+      collectSound.currentTime = 0;
+      collectSound.play();
+      spawnParticles(dino.x, dino.y);
+      collectibles.splice(i, 1);
+      if (score >= 5) {
+        gameOver = true;
+        setTimeout(() => showEnd = true, 500);
+      }
+    }
+
+    if (c.x + 40 < 0) collectibles.splice(i, 1);
+  }
+
+  // Draw particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    let p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.alpha -= 0.03;
+    ctx.fillStyle = `rgba(245,197,66,${p.alpha})`;
+    ctx.font = "20px Arial";
+    ctx.fillText(p.emoji, p.x, p.y);
+    if (p.alpha <= 0) particles.splice(i, 1);
+  }
+
+  // Score
+  ctx.fillStyle = "#f5c542";
+  ctx.font = "20px Arial";
+  ctx.fillText("Score: " + score + " / 5", 10, 30);
+
+  // End & Valentine
+  if (showEnd) {
+    ctx.fillStyle = "#eee";
+    ctx.font = "28px Arial";
+    ctx.fillText("Dino survived the gym!", 50, 150);
+
+    if (score >= 5) {
+      ctx.fillText("🦖 asks: Be my Valentine, Geckool?", 50, 190);
+
+      if (!document.getElementById("yesBtn")) {
+        // YES button
+        let yesBtn = document.createElement("button");
+        yesBtn.id = "yesBtn";
+        yesBtn.innerText = "YES 💪";
+        yesBtn.onclick = () => {
+          responseMessage = "💥 PARTY! Dino flexes! 🏋️‍♂️🎉";
+          celebrateSound.currentTime = 0;
+          celebrateSound.play();
+          celebrationActive = true;
+          yesBtn.style.display = "none";
+          noBtn.style.display = "none";
+          spawnParticles(canvas.width/2, 200);
+        };
+        document.body.appendChild(yesBtn);
+
+        // NO button
+        let noBtn = document.createElement("button");
+        noBtn.id = "noBtn";
+        noBtn.innerText = "NO 😅";
+        noBtn.onclick = () => {
+          responseMessage = "😢 Dino walks away shrugging... 🤷‍♂️";
+          yesBtn.style.display = "none";
+          noBtn.style.display = "none";
+          celebrationActive = true;
+          spawnParticles(canvas.width/2, 200);
+        };
+        document.body.appendChild(noBtn);
+      }
+    } else {
+      ctx.fillText("Try again for full max score!", 50, 190);
+    }
+  }
+
+  // Show response after click
+  if (responseMessage) {
+    ctx.fillStyle = "#f5c542";
+    ctx.font = "26px Arial";
+    ctx.fillText(responseMessage, 50, 240);
+  }
+
+  requestAnimationFrame(update);
+}
+
+update();
+</script>
+</body>
+</html>
